@@ -26,6 +26,7 @@ const BuildConfig* RemoteSpawn::config = nullptr;
 RemoteSpawn* RemoteSpawn::CreateRemoteSpawn(Edge* edge) {
   RemoteSpawn* spawn = new RemoteSpawn(edge, CanExecuteRemotelly(edge));
   std::string command = edge->EvaluateCommand();
+  std::string rule = edge->rule().name();
   spawn->origin_command = command;
   spawn->command = command;
   spawn->arguments = std::move(SplitStrings(command));
@@ -58,18 +59,73 @@ std::vector<std::string> RemoteSpawn::GetHeaderFiles() {
   if (res.empty()) {
     Warning("command [%s] get headerfiles fail", origin_command.c_str());
   }
+  CleanCommand();
   return res;
+}
+
+void RemoteSpawn::CleanCommand() {
+  std::string command = origin_command;
+  if(command.find("\\") == std::string::npos) {
+    return;
+  }
+  std::string cleaned;
+  int len = command.size();
+  cleaned.reserve(command.size());
+  for (size_t i = 0; i < len; ++i) {
+    if (command[i] == '\\') {
+      if (i + 1 < len && (command[i + 1] == ' ')) {
+        ++i;
+      } else if(i + 3 < len && command[i+1] == '\\' && command[i+2] == '\\' && command[i+3] == '"') {
+        i+=3;
+      }
+      continue;
+    }
+    cleaned += command[i];
+  }
+  command = cleaned;
+  this->origin_command = command;
+  this->command = command;
+  this->arguments = std::move(SplitStrings(command));
 }
 
 bool RemoteSpawn::CanExecuteRemotelly(Edge* edge) {
   if (!edge)
     return false;
-  if(edge->rule().name().substr(0,14)=="CXX_COMPILER__") return true;
-    return false;
   std::string command = edge->EvaluateCommand();
+  std::string rule = edge->rule().name();
+  
+  if (config->rbe_config.local_only_rules.find(rule) != config->rbe_config.local_only_rules.end()){
+    return false;
+  }
+  for (auto &cmd : config->rbe_config.local_only_fuzzy){
+    if(command.find(cmd)!=std::string::npos || rule.find(cmd)!=std::string::npos){
+      return false;
+    }
+  }
   for (auto& it : CompileCommandParser::SupportedRemoteExecuteCommands())
     if (command.find(it) != std::string::npos)
       return true;
+  return false;
+}
+
+bool RemoteSpawn::CanCacheRemotelly(Edge* edge) {
+  if (!edge)
+    return false;
+  std::string command = edge->EvaluateCommand();
+  std::string rule = edge->rule().name();
+
+  if (config->rbe_config.local_only_rules.find(rule) != config->rbe_config.local_only_rules.end()){
+    return false;
+  }
+  for (auto &cmd:config->rbe_config.local_only_fuzzy){
+    if (command.find(cmd)!=std::string::npos || rule.find(cmd)!=std::string::npos){
+      return false;
+    }
+  }
+  for (auto& it : CompileCommandParser::SupportedRemoteExecuteCommands())
+    if (command.find(it) != std::string::npos)
+      return true;
+  
   return false;
 }
 

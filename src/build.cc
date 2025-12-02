@@ -722,6 +722,8 @@ struct RealCommandRunner : public CommandRunner {
   const BuildConfig& config_;
   SubprocessSet subprocs_;
   map<const Subprocess*, Edge*> subproc_to_edge_;
+  map<const Subprocess*, std::chrono::high_resolution_clock::time_point> subproc_start_time_;
+
 };
 
 vector<Edge*> RealCommandRunner::GetActiveEdges() {
@@ -734,6 +736,8 @@ vector<Edge*> RealCommandRunner::GetActiveEdges() {
 
 void RealCommandRunner::Abort() {
   subprocs_.Clear();
+  subproc_start_time_.clear();
+
 }
 
 size_t RealCommandRunner::CanRunMore() const {
@@ -760,10 +764,15 @@ size_t RealCommandRunner::CanRunMore() const {
 
 bool RealCommandRunner::StartCommand(Edge* edge) {
   string command = edge->EvaluateCommand();
+  string rule = edge->rule().name();
+
   Subprocess* subproc = subprocs_.Add(command, edge->use_console());
   if (!subproc)
     return false;
   subproc_to_edge_.insert(make_pair(subproc, edge));
+
+  auto start_time = std::chrono::high_resolution_clock::now();
+  subproc_start_time_.insert(make_pair(subproc, start_time));
 
   return true;
 }
@@ -781,6 +790,40 @@ bool RealCommandRunner::WaitForCommand(Result* result) {
 
   map<const Subprocess*, Edge*>::iterator e = subproc_to_edge_.find(subproc);
   result->edge = e->second;
+
+  map<const Subprocess*, std::chrono::high_resolution_clock::time_point>::iterator time_it = 
+      subproc_start_time_.find(subproc);
+  if (time_it != subproc_start_time_.end()) {
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - time_it->second).count();
+    
+    string command = result->edge->EvaluateCommand();
+    string rule = result->edge->rule().name();
+    
+    // 格式化时间输出
+    std::ostringstream time_oss;
+    if (duration < 1000) {
+      time_oss << std::fixed << std::setprecision(2) << duration << "ms";
+    } else if (duration < 60000) {
+      time_oss << std::fixed << std::setprecision(2) << (duration / 1000.0) << "s";
+    } else {
+      int minutes = static_cast<int>(duration / 60000);
+      double seconds = (duration - minutes * 60000) / 1000.0;
+      time_oss << minutes << "m " << std::fixed << std::setprecision(2) << seconds << "s";
+    }
+    
+    {
+      std::ostringstream oss;
+      oss << "[LOG] Execute local rule: " << rule 
+          << ", execution_time: " << time_oss.str() 
+          << ", command: " << command << std::endl;
+      std::cout << oss.str();
+    }
+    
+    subproc_start_time_.erase(time_it);
+  }
+
   subproc_to_edge_.erase(e);
 
   delete subproc;

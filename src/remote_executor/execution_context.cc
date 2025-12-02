@@ -16,6 +16,9 @@
 
 #include <fstream>
 #include <sstream>
+#include <chrono>
+#include <iomanip>
+#include <iostream>
 
 #include "google/protobuf/util/time_util.h"
 
@@ -344,12 +347,31 @@ ConnectionOptions GetConnectOptions() {
   return option;
 }
 
+// 格式化时间输出（毫秒）
+std::string FormatDuration(double milliseconds) {
+  std::ostringstream oss;
+  if (milliseconds < 1000) {
+    oss << std::fixed << std::setprecision(2) << milliseconds << "ms";
+  } else if (milliseconds < 60000) {
+    oss << std::fixed << std::setprecision(2) << (milliseconds / 1000.0) << "s";
+  } else {
+    int minutes = static_cast<int>(milliseconds / 60000);
+    double seconds = (milliseconds - minutes * 60000) / 1000.0;
+    oss << minutes << "m " << std::fixed << std::setprecision(2) << seconds << "s";
+  }
+  return oss.str();
+}
+
 void ExecutionContext::Execute(int fd, RemoteExecutor::RemoteSpawn* spawn,
                               int& exit_code) {
+  auto total_start_time = std::chrono::high_resolution_clock::now();
+
   std::string command = spawn->edge->EvaluateCommand();
   std::string rule = spawn->edge->rule().name();
   bool can_cache = RemoteExecutor::RemoteSpawn::CanCacheRemotelly(spawn->edge);
   if (!can_cache) {
+    auto local_start_time = std::chrono::high_resolution_clock::now();
+
     // Execute locally
     SubprocessSet subprocset;
     Subprocess* subproc = subprocset.Add(spawn->command);
@@ -367,6 +389,17 @@ void ExecutionContext::Execute(int fd, RemoteExecutor::RemoteSpawn* spawn,
       // Warning("Execute locally: %s", subproc->GetOutput().c_str());
     }
     delete subproc;
+    auto local_end_time = std::chrono::high_resolution_clock::now();
+    auto local_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        local_end_time - local_start_time).count();
+    {
+      std::ostringstream oss;
+      oss << "[LOG] Execute local rule: " << rule 
+          << ", local_time: " << FormatDuration(local_duration) 
+          << ", command: " << command << std::endl;
+      std::cout << oss.str();
+    }
+
     exit_code = 0;
     close(fd);
     return;
@@ -412,6 +445,7 @@ void ExecutionContext::Execute(int fd, RemoteExecutor::RemoteSpawn* spawn,
   // spawn->work.remote = false; 时，只能本地执行
   // spawn->work.remote = false;
   if (!cached && !spawn->can_remote) {
+    auto local_start_time = std::chrono::high_resolution_clock::now();
     // Execute locally
     SubprocessSet subprocset;
     Subprocess* subproc = subprocset.Add(spawn->command);
@@ -429,6 +463,17 @@ void ExecutionContext::Execute(int fd, RemoteExecutor::RemoteSpawn* spawn,
       Warning("Execute locally: %s", subproc->GetOutput().c_str());
     }
     delete subproc;
+
+    auto local_end_time = std::chrono::high_resolution_clock::now();
+    auto local_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        local_end_time - local_start_time).count();
+    {
+      std::ostringstream oss;
+      oss << "[LOG] Execute local rule: " << rule 
+          << ", local_time: " << FormatDuration(local_duration) 
+          << ", command: " << command << std::endl;
+      std::cout << oss.str();
+    }
 
     DigestStringMap outblobs, outputs_digest_files;
     bool ret = BuildActionOutputs(spawn, cwd, &outblobs, &outputs_digest_files, &result);
@@ -457,8 +502,12 @@ void ExecutionContext::Execute(int fd, RemoteExecutor::RemoteSpawn* spawn,
     return;  
   }
 
+  std::chrono::high_resolution_clock::time_point remote_start_time;
+  bool is_remote_execution = false;
   // remote 执行
   if (!cached && spawn->can_remote) {
+    remote_start_time = std::chrono::high_resolution_clock::now();
+      is_remote_execution = true;
       blobs[action_digest] = action.SerializeAsString();
       UploadResources(&cas_client, blobs, digest_files);
       result = re_client.ExecuteAction(action_digest, *stop_requested_, false);
@@ -521,6 +570,27 @@ void ExecutionContext::Execute(int fd, RemoteExecutor::RemoteSpawn* spawn,
   }
   if (len < 0)
     Warning("Wrote command output to fd failed.");
+  // 输出总执行时间
+  auto total_end_time = std::chrono::high_resolution_clock::now();
+  auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      total_end_time - total_start_time).count();
+
+  auto remote_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      total_end_time - remote_start_time).count();
+  
+  if (cached) {
+    std::ostringstream oss;
+    oss << "[LOG] Execute cached rule: " << rule 
+        << ", total_time: " << FormatDuration(total_duration) 
+        << ", command: " << command << std::endl;
+    std::cout << oss.str();
+  } else if (is_remote_execution) {
+    std::ostringstream oss;
+    oss << "[LOG] Execute remote rule: " << rule 
+        << ", total_time: " << FormatDuration(remote_duration) 
+        << ", command: " << command << std::endl;
+    std::cout << oss.str();
+  }
   close(fd);
 }
 

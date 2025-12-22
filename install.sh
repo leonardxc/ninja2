@@ -72,7 +72,8 @@ function install_dependencies {
         success "NFS共享规则已存在，跳过添加"
       fi
       
-     
+      # 3. 安装并配置ninja所需动态库
+      sudo apt-get install libabsl20210324
       #sudo apt-get update
       #sudo apt-get install -y git cmake g++ gcc googletest libgmock-dev libssl-dev pkg-config uuid-dev grpc++ libprotobuf-dev protobuf-compiler-grpc ninja-build libyaml-cpp-dev 
       ;;

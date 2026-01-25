@@ -1,0 +1,33 @@
+name: Sync to Gitee Branch
+
+on:
+  push:
+    # 只要 GitHub 的 master 或 main 有更新就触发
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # 获取完整历史记录，确保推送顺利
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          # 使用在 GitHub Secrets 中保存的 GITEE_SSH_KEY
+          echo "${{ secrets.GITEE_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+
+      - name: Push to Gitee as ninja2 branch
+        run: |
+          #  Gitee 目标仓库 SSH 地址
+          REMOTE_REPO="git@gitee.com:cloudbuild888/android_ninja.git"
+          
+          # 将 GitHub 的当前代码推送到 Gitee 的 'ninja2' 分支
+          # 不会覆盖 Gitee 原有的代码，而是作为一个独立分支存在
+          git push $REMOTE_REPO HEAD:refs/heads/ninja2 --force

@@ -28,7 +28,7 @@ cd /usr/bin && rm python && ln -s /usr/bin/python3.8 python && python --version
 # 安装编译工具
 wget -c https://repo.huaweicloud.com/openharmony/os/4.1-Release/code-v4.1-Release.tar.gz
 tar -zxvf code-v4.1-Release.tar.gz
-cd cd OpenHarmony-v4.1-Release/OpenHarmony/
+cd OpenHarmony-v4.1-Release/OpenHarmony/
 python3 -m pip install --user build/hb
 vim ~/.bashrc
 #将以下命令拷贝到.bashrc文件的最后一行，保存并退出。
@@ -71,29 +71,58 @@ sudo mv /home/user/ninja2/build/ninja prebuilts/build-tools/linux-x86/bin/
 
 # 1.操作步骤
 
-## 1.1 运行buildbuddy
-### 1.1.1 clone
+## 1.1 配置 NFS Server
+
+```sh
+wget -c https://repo.huaweicloud.com/openharmony/os/4.1-Release/code-v4.1-Release.tar.gz
+tar -zxvf code-v4.1-Release.tar.gz
+cd OpenHarmony-v4.1-Release/OpenHarmony
+# 主要配置OpenHarmony的prebuilts
+apt install nfs-kernel-server -y
+
+vim /etc/exports
+# /etc/exports 添加
+# ===========================
+........./OpenHarmony-v4.1-Release/OpenHarmony/prebuilts 
+*(rw,sync,no_root_squash,no_subtree_check)
+# ===========================
+
+# 2.生效并启动
+exportfs -rav
+
+systemctl restart nfs-kernel-server
+systemctl enable nfs-kernel-server
+systemctl status nfs-kernel-server
+
+#可在其他主机上使用以下命令查看
+showmount -e [NFS SERVER IP] 
+```
+
+## 1.2 运行 buildbuddy server
+### (1) clone
 ```sh
 git clone https://github.com/buildbuddy-io/buildbuddy.git
 # git clone git@github.com:buildbuddy-io/buildbuddy.git
 ```
-### 1.1.2 运行server
+### (2) 运行server
 ```sh
 cd buildbuddy/
 bazel build //enterprise/server:server
 bazel run //enterprise/server:server
 ```
-### 1.1.3 运行executor
+
+
+## 1.3 运行 buildbuddy executor
 ```sh
 docker pull swr.cn-south-1.myhuaweicloud.com/openharmony-docker/docker_oh_standard:3.2
-docker run -it --network=host swr.cn-south-1.myhuaweicloud.com/openharmony-docker/docker_oh_standard:3.2
-# 下次进入容器时使用 docker exec -it [docker-id] /bin/bash
 
-wget -c https://repo.huaweicloud.com/openharmony/os/4.1-Release/code-v4.1-Release.tar.gz
-tar -zxvf code-v4.1-Release.tar.gz
-rm code-v4.1-Release.tar.gz
-ln -s /.../Openharmony/prebuilts /tmp
+docker volume create --driver local --opt type=nfs --opt o=addr="192.168.1.10",rw --opt device=:/home/lxc/OpenHarmony-v4.1-Release/OpenHarmony/prebuilts --name ohnfs
 
+docker run -it --network=host -v ohnfs:/tmp/prebuilts swr.cn-south-1.myhuaweicloud.com/openharmony-docker/docker_oh_standard:3.2
+# 下次进入容器时使用 docker exec -it [docker id] /bin/bash
+
+# 进入容器内
+git clone https://github.com/buildbuddy-io/buildbuddy.git
 cd buildbuddy/
 bazel build //enterprise/server/cmd/executor:executor
 bazel run //enterprise/server/cmd/executor:executor
@@ -101,28 +130,26 @@ bazel run //enterprise/server/cmd/executor:executor
 
 ## 1.2 编译
 
-**(1) 准备 OHOS 编译环境**
+### (1) 准备 OHOS 编译环境
 ```sh
-wget -c https://repo.huaweicloud.com/openharmony/os/4.1-Release/code-v4.1-Release.tar.gz
-tar -zxvf code-v4.1-Release.tar.gz
 cd OpenHarmony-v4.1-Release/OpenHarmony
 docker run -it -v $(pwd):/home/openharmony swr.cn-south-1.myhuaweicloud.com/openharmony-docker/docker_oh_standard:3.2
 ```
 
-**(2) 编译 ninja2**
+### (2) 编译 ninja2
 ```sh
 git clone https://github.com/ninja-cloudbuild/ninja2.git
 cd ninja2
 ./build.sh build
 ```
 
-**(3) 配置 $HOME/.ninja2.conf**
+### (3) 配置 $HOME/.ninja2.conf
 ```
 cloudbuild: true
-grpc_url: "grpc://192.168.1.12:1989"
+grpc_url: "grpc://192.168.1.12:1985"
 ```
 
-**(4) .cloudbuild.yml**
+### (4) .cloudbuild.yml
 ```
 # 作用：配置 RBE（远程构建执行）的命令规则
 rules:
@@ -200,7 +227,7 @@ rules:
     - "externals/libjpeg-turbo/simd"
 ```
 
-**(5) 开始编译**
+### (5) 开始编译
 ```sh
 cp prebuilts/build-tools/linux-x86/bin/ninja prebuilts/build-tools/linux-x86/bin/ninja-back
 rm prebuilts/build-tools/linux-x86/bin/ninja

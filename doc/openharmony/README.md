@@ -65,8 +65,8 @@ sudo mv /home/user/ninja2/build/ninja prebuilts/build-tools/linux-x86/bin/
 
 | 主机          | 编号   | 系统            | 内存  | 物理核数 | 逻辑CPU | 运行环境 |
 | ------------- | ---- | ------------------ | --- | ---- | ----- | ---- |
-| 源码          | lab0 | Ubuntu 22.04.5 LTS | 32G | 12   | 16    | 容器   |
-| remote server | lab2 | Ubuntu 22.04.5 LTS | 32G | 12   | 16    | 主机   |
+| 源码及ninja2  | lab0 | Ubuntu 22.04.5 LTS | 32G | 12   | 16    | 容器   |
+| server        | lab2 | Ubuntu 22.04.5 LTS | 32G | 12   | 16    | 主机   |
 | executor      | lab1 | Ubuntu 22.04.2 LTS | 32G | 12   | 16    | 容器   |
 
 # 1.操作步骤
@@ -143,94 +143,24 @@ cd ninja2
 ./build.sh build
 ```
 
-### (3) 配置 $HOME/.ninja2.conf
+### (3) 配置 ninja2
+```sh
+cd /home/openharmony
+# .cloudbuild.yml文件默认放在项目根目录下
+cp /path/to/ninja2/doc/openharmony/.cloudbuild.yml ./
+# .ninja2.conf 默认放在项目根目录下，放在$HOME/.ninja2.conf 为当前用户全局有效影响所有项目的ninja2编译
+cp /path/to/ninja2/doc/openharmony/.ninja2.conf ./
+```
+注意.ninja2.conf文件中的IP地址修改为您实际的server IP地址
 ```
 cloudbuild: true
-grpc_url: "grpc://192.168.1.12:1985"
+grpc_url: "grpc://[您实际的server IP地址]:1985"
 ```
-
-### (4) .cloudbuild.yml
-```
-# 作用：配置 RBE（远程构建执行）的命令规则
-rules:
-  # 仅本地仅执行的命令（如本地文件预处理、依赖检查）
-  local_only_rules:
-    - "CXX_COMPILER__LumeShaderCompiler"
-    - "CXX_EXECUTABLE_LINKER__LumeShaderCompiler" 
-    - "CXX_COMPILER__SPIRV-Tools-shared"
-    - "CXX_SHARED_LIBRARY_LINKER__SPIRV-Tools-shared"
-    - "CXX_COMPILER__SPIRV-Tools-static"
-    - "CXX_STATIC_LIBRARY_LINKER__SPIRV-Tools-static"
-    - "CXX_COMPILER__SPIRV-Tools-opt"
-    - "CXX_STATIC_LIBRARY_LINKER__SPIRV-Tools-opt"
-    - "CXX_COMPILER__SPIRV-Tools-reduce"
-    - "CXX_STATIC_LIBRARY_LINKER__SPIRV-Tools-reduce"
-    - "CXX_COMPILER__SPIRV-Tools-link"
-    - "CXX_STATIC_LIBRARY_LINKER__SPIRV-Tools-link"
-    - "CXX_COMPILER__SPIRV-Tools-lint"
-    - "CXX_STATIC_LIBRARY_LINKER__SPIRV-Tools-lint"
-    - "CXX_COMPILER__SPIRV-Tools-diff"
-    - "CXX_STATIC_LIBRARY_LINKER__SPIRV-Tools-diff"
-    - "CXX_COMPILER__GenericCodeGen"
-    - "CXX_STATIC_LIBRARY_LINKER__GenericCodeGen"
-    - "CXX_COMPILER__MachineIndependent"
-    - "CXX_STATIC_LIBRARY_LINKER__MachineIndependent"
-    - "CXX_COMPILER__glslang"
-    - "CXX_STATIC_LIBRARY_LINKER__glslang"
-    - "CXX_COMPILER__OSDependent"
-    - "CXX_STATIC_LIBRARY_LINKER__OSDependent"
-    - "CXX_COMPILER__OGLCompiler"
-    - "CXX_STATIC_LIBRARY_LINKER__OGLCompiler"
-    - "CXX_COMPILER__SPIRV"
-    - "CXX_STATIC_LIBRARY_LINKER__SPIRV"
-    - "CXX_COMPILER__spirv-cross-glsl"
-    - "CXX_STATIC_LIBRARY_LINKER__spirv-cross-glsl"
-    - "CXX_COMPILER__spirv-cross-core"
-    - "CXX_STATIC_LIBRARY_LINKER__spirv-cross-core"
-    - "CXX_COMPILER__LumeAssetCompiler"
-    - "CXX_EXECUTABLE_LINKER__LumeAssetCompiler"
-    - "clang_x64_rust_bin"
-    - "clang_x64_rust_macro"
-    - "clang_x64_rust_rlib"
-    - "rust_bin"
-    - "rust_cdylib"
-    - "rust_dylib"
-    - "rust_rlib"
-    - "rust_staticlib"
-    - "solink"
-    - "alink"
-    - "link"
-    - "clang_x64_solink"
-    - "clang_x64_alink"
-    - "clang_x64_link"    
-    - "mingw_x86_64_solink"
-    - "mingw_x86_64_alink"
-    - "mingw_x86_64_link"
-    - "stamp"
-    - "copy"
-  # 远程执行但不缓存的命令（如每次需重新拉取资源的命令）
-  remote_exec_rules:
-  # 模糊匹配的命令（如包含特定关键词的编译命令）
-  local_only_fuzzy:
-    - "build_toolchain_ohos_ohos_clang_arm__rule"
-    - "build_toolchain_linux_clang_x64__rule"
-    - "build_toolchain_mingw_mingw_x86_64__rule"
-    - "asm_defines/asm_defines/defines"
-    - "soft_musl_crt/crti"
-    - "FREETYPE_MINOR"
-    - "compiler/optimizer/code_generator/target"
-    - "QuickFixService"
-    - "BundleTool"
-    - "render_service_base/rs_base_blocklist"
-    - "render_service_client/rs_client_blocklist"
-    - "externals/libjpeg-turbo/libjpeg"
-    - "externals/libjpeg-turbo/simd"
-```
+cp prebuilts/build-tools/linux-x86/bin/ninja prebuilts/build-tools/linux-x86/bin/ninja-back
+rm prebuilts/build-tools/linux-x86/bin/ninja
+cp /path/to/ninja2/build/bin/ninja prebuilts/build-tools/linux-x86/bin/
 
 ### (5) 开始编译
 ```sh
-cp prebuilts/build-tools/linux-x86/bin/ninja prebuilts/build-tools/linux-x86/bin/ninja-back
-rm prebuilts/build-tools/linux-x86/bin/ninja
-cp /home/ninja2/build/bin/ninja prebuilts/build-tools/linux-x86/bin/
 ./build.sh --product-name rk3568 --ccache=false --ninja-args="-r/home/openharmony"
 ```
